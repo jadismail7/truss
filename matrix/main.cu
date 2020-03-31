@@ -19,7 +19,6 @@ int main(int argc, char **argv)
 
 	truss_cpu(g, k);
 
-	printTrussComponents(g, k);
 	return 0;
 }
 
@@ -38,7 +37,6 @@ int initGraph(Graph * g, char * filename)
         {
 			fscanf(myfile, "%d %d", &v1, &v2);
 			addEdge(g, v1, v2, 1, index++);
-			addEdge(g, v2, v1, 1, index++);
             int localMax = v1>v2?v1:v2;
             numRows = numRows>localMax?numRows:localMax;
         }

@@ -9,6 +9,7 @@ typedef struct graph
     unsigned int *row;
     unsigned int *col;
     unsigned int *rowPtr;
+    int * values;
     unsigned int rowPtrSize;
 } Graph;
 

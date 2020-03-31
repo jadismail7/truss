@@ -89,7 +89,7 @@ void truss_gpu(Graph * g, int k)
     //     cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
     //     cudaDeviceSynchronize();
 
-    
+
     // }
     // printf("done");
 
@@ -100,32 +100,45 @@ void truss_gpu(Graph * g, int k)
     // cudaFree(done_d);
 }
 
-void truss_cpu(Graph * g, int k) {
-    int done = 0;
-    while(!done){
-        done = 1;
-        for (unsigned int i = 0; i < g->nnzSize; ++i) {
-            unsigned int v1 = g->row[i];
-            unsigned int v2 = g->col[i];
-            if (g->col[i] == UINT_MAX){
-                continue;
-            }
-            unsigned int commonNeighbors = 0;
-            for (unsigned int v1NeighborIndex = g->rowPtr[v1]; v1NeighborIndex < g->rowPtr[v1+1]; ++v1NeighborIndex) {
-                for (unsigned int v2NeighborIndex = g->rowPtr[v2]; v2NeighborIndex < g->rowPtr[v2+1]; ++v2NeighborIndex) {
-                    unsigned int v1Neighbor = g->col[v1NeighborIndex];
-                    unsigned int v2Neighbor = g->col[v2NeighborIndex];
-                    if (v1Neighbor == v2Neighbor && g->col[v1NeighborIndex] != UINT_MAX && g->col[v2NeighborIndex] != UINT_MAX ) {
-                        commonNeighbors++;
-                    }
+Graph * mult_cpu(Graph * g, int k) {
+    Graph * s = (Graph *) malloc(sizeof(Graph));
+    s->nnzSize = 0;
+    unsigned int index = 0;
+    for (unsigned int i = 0 ; i < g->rowPtrSize; ++i) {
+        for (unsigned int j = 0 ; j < g->rowPtrSize; ++j) {
+            int sum = 0;
+            for (unsigned int m1 = g->rowPtr[i]; m1 < g->rowPtr[i+1]; ++m1) {
+                for (unsigned int m2 = g->rowPtr[j]; m2 < g->rowPtr[j+1]; ++m2) {
+                    sum+= g->values[m1]*g->values[m2];
                 }
             }
-            if (commonNeighbors < (k-2)) {
-                g->col[i] = UINT_MAX;
-                done = 0;
-            }
+            addEdge(s, i, j, sum, index++);
         }
     }
+    done(s, index);
+    return s;
+}
+
+void truss_cpu(Graph * g, int k) {
+    int changed = false;
+    while(!changed) {
+        changed = true;
+        Graph * S = mult_cpu(g, k);
+        for (int i = 0; i < S->nnzSize; ++i) {
+            if (S->values[i] < k-2) {
+                changed = false;
+                g->values[i] = 0;
+            }
+            S->values[i] *= g->values[i];
+        }
+
+    }
+    for (int i = 0 ; i < g->nnzSize; ++i) {
+        if (g->values[i] >= k-2) {
+            printf("%d - %d - %d\n", g->row[i], g->col[i], g->values[i]);
+        }
+    }
+
 }
 
 
@@ -136,6 +149,7 @@ void addEdge(Graph * g, int v1, int v2, double weight, int index)
     {
         g->row = (unsigned int *)malloc(BASE_SIZE * sizeof(int));
         g->col = (unsigned int *)malloc(BASE_SIZE * sizeof(int));
+        g->values = (int *)malloc(BASE_SIZE * sizeof(int));
         g->nnzSize = BASE_SIZE;
 
     }
@@ -144,9 +158,11 @@ void addEdge(Graph * g, int v1, int v2, double weight, int index)
         g->nnzSize *= 2;
         g->row = (unsigned int *)realloc(g->row, g->nnzSize * sizeof(int));
         g->col = (unsigned int *)realloc(g->col, g->nnzSize * sizeof(int));
+        g->values = (int *)realloc(g->col, g->nnzSize * sizeof(int));
     }
     g->row[index] = v1;
     g->col[index] = v2;
+    g->values[index] = weight;
 }
 
 void done(Graph * g, int size) {
@@ -159,6 +175,7 @@ void createCSRFromCOO(Graph * g, int numRows)
     unsigned int *rowPtrs = (unsigned int *)calloc(numRows + 1, sizeof(unsigned int));
     unsigned int *colIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
     unsigned int *rowIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
+    int *values = (int *)malloc(g->nnzSize * sizeof(int));
 
     // Histogram
     for (unsigned int i = 0; i <g->nnzSize; ++i)
@@ -184,6 +201,7 @@ void createCSRFromCOO(Graph * g, int numRows)
         unsigned int i = rowPtrs[row]++;
         colIdxs[i] = g->col[index];
         rowIdxs[i] = g->row[index];
+        values[i] = g->values[index];
     }
 
     // Restore row pointers
@@ -197,6 +215,7 @@ void createCSRFromCOO(Graph * g, int numRows)
     g->rowPtr = rowPtrs;
     g->col = colIdxs;
     g->row = rowIdxs;
+    g->values = values;
 }
 
 unsigned int *DFSUtil(Graph * g, int v, int visited[], int *size)
