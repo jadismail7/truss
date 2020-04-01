@@ -35,69 +35,37 @@ __global__ void truss_kernel(Graph * g, int k, int *done)
 }
 
 void copyGraph(Graph * source, Graph * destination, cudaMemcpyKind direction) {
-    // unsigned int * cooCol, *cooRow;
-    // cudaMalloc((void **)&cooCol, h1->cooSize*sizeof(int));
-    // cudaMalloc((void **)&cooRow, h1->cooSize*sizeof(int));
-    // d1->cooSize = h1->cooSize;
-    // unsigned int * cooColH = h1->col, *cooRowH=h1->row;
-
-    // cudaMemcpy(cooCol, cooColH, sizeof(int)*h1->cooSize, direction);
-    // cudaMemcpy(cooRow, cooRowH, sizeof(int)*h1->cooSize, direction);
-
-    // d1->col = cooCol;
-    // d1->row = cooRow;
-
-    // printf("test2\n");
-    // unsigned int *csrRowPtr, *csrCol;
-    // cudaMalloc((void **) &csrRowPtr, h2->rowPtrSize*sizeof(int));
-    // cudaMalloc((void **) &csrCol, h2->colSize*sizeof(int));
-    // unsigned int * csrRowH = h2->rowPtr, *csrColH = h2->col;
-    // d2->rowPtrSize = h2->rowPtrSize;
-    // d2->colSize = h2->colSize;
-    // cudaMemcpy(csrRowPtr, csrRowH, h2->rowPtrSize*sizeof(int), direction);
-    // cudaMemcpy(csrCol, csrColH, h2->colSize*sizeof(int), direction);
-
-    // d2->col = csrCol;
-    // d2->rowPtr = csrRowPtr;
+    
 }
 void truss_gpu(Graph * g, int k)
 {
-    // Graph * g
-    // int *done_d;
+    Graph * graph_d
+    int *done_d;
 
-    // cudaMalloc((void **)&coo_d, sizeof(COO));
-    // cudaMalloc((void **)&csr_d, sizeof(CSR));
-    // cudaMalloc((void **)&done_d, sizeof(int));
+    cudaMalloc((void **)&graph_d, sizeof(Graph));
+    cudaMalloc((void **)&done_d, sizeof(int));
 
-    // copyGraph(coo, coo_d, csr, csr_d, cudaMemcpyHostToDevice);
-    // printf("Hello?");
+    cudaDeviceSynchronize();
+    unsigned int numThreads = 1024;
+    unsigned int numBlocks = (graph->nnzSize + numThreads - 1) / numThreads;
+    int *done = (int *)malloc(sizeof(int));
+    done[0] = 0;
 
-    // cudaDeviceSynchronize();
-    // unsigned int numThreads = 1024;
-    // unsigned int numBlocks = (coo->cooSize + numThreads - 1) / numThreads;
-    // int *done = (int *)malloc(sizeof(int));
-    // done[0] = 0;
-
-    // while (!done[0])
-    // {
-
-    //     done[0] = 1;
-    //     cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
-    //     cudaDeviceSynchronize();
-    //     truss_kernel<<<numThreads, numBlocks>>>(coo_d, csr_d, k, done_d);
-    //     cudaDeviceSynchronize();
-    //     cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
-    //     cudaDeviceSynchronize();
+    while (!done[0])
+    {
+        done[0] = 1;
+        cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
+        cudaDeviceSynchronize();
+        truss_kernel<<<numThreads, numBlocks>>>(graph_d, k, done_d);
+        cudaDeviceSynchronize();
+        cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+    }
 
     
-    // }
-    // printf("done");
 
-    // copyGraph(coo_d, coo, csr_d, csr, cudaMemcpyDeviceToHost);
-
-    // cudaFree(coo_d);
-    // cudaFree(csr_d);
-    // cudaFree(done_d);
+    cudaFree(graph_d);
+    cudaFree(done_d);
 }
 
 void truss_cpu(Graph * g, int k) {

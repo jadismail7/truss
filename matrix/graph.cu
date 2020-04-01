@@ -3,101 +3,15 @@
 #include <string>
 __global__ void truss_kernel(Graph * g, int k, int *done)
 {
-    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < g->nnzSize) {
-        int v1 = g->row[index];
-        int v2 = g->col[index];
-        if (g->col[index] != UINT_MAX) {
-            unsigned int commonNeighbors = 0;
-            for (unsigned int i = g->rowPtr[v1]; i < g->rowPtr[v1 + 1]; ++i)
-            {
-                for (unsigned int j = g->rowPtr[v2]; j < j < g->rowPtr[v2 + 1]; ++j)
-                {
-                    unsigned int neighbor1 = g->col[i];
-                    unsigned int neighbor2 = g->col[j];
-                    if (neighbor1 == neighbor2 && g->col[i] != UINT_MAX && g->col[j] != UINT_MAX)
-                    {
-                        ++commonNeighbors;
-                    }
-                    if (commonNeighbors >= k-2) {
-                        break;
-                    }
-                }
-            }
-            if (commonNeighbors <= k)
-            {
-                g->col[index] = UINT_MAX;
-                done[0] = 0;
-            }
-        }
-    }
-
+   
 }
 
 void copyGraph(Graph * source, Graph * destination, cudaMemcpyKind direction) {
-    // unsigned int * cooCol, *cooRow;
-    // cudaMalloc((void **)&cooCol, h1->cooSize*sizeof(int));
-    // cudaMalloc((void **)&cooRow, h1->cooSize*sizeof(int));
-    // d1->cooSize = h1->cooSize;
-    // unsigned int * cooColH = h1->col, *cooRowH=h1->row;
-
-    // cudaMemcpy(cooCol, cooColH, sizeof(int)*h1->cooSize, direction);
-    // cudaMemcpy(cooRow, cooRowH, sizeof(int)*h1->cooSize, direction);
-
-    // d1->col = cooCol;
-    // d1->row = cooRow;
-
-    // printf("test2\n");
-    // unsigned int *csrRowPtr, *csrCol;
-    // cudaMalloc((void **) &csrRowPtr, h2->rowPtrSize*sizeof(int));
-    // cudaMalloc((void **) &csrCol, h2->colSize*sizeof(int));
-    // unsigned int * csrRowH = h2->rowPtr, *csrColH = h2->col;
-    // d2->rowPtrSize = h2->rowPtrSize;
-    // d2->colSize = h2->colSize;
-    // cudaMemcpy(csrRowPtr, csrRowH, h2->rowPtrSize*sizeof(int), direction);
-    // cudaMemcpy(csrCol, csrColH, h2->colSize*sizeof(int), direction);
-
-    // d2->col = csrCol;
-    // d2->rowPtr = csrRowPtr;
+   
 }
 void truss_gpu(Graph * g, int k)
 {
-    // Graph * g
-    // int *done_d;
 
-    // cudaMalloc((void **)&coo_d, sizeof(COO));
-    // cudaMalloc((void **)&csr_d, sizeof(CSR));
-    // cudaMalloc((void **)&done_d, sizeof(int));
-
-    // copyGraph(coo, coo_d, csr, csr_d, cudaMemcpyHostToDevice);
-    // printf("Hello?");
-
-    // cudaDeviceSynchronize();
-    // unsigned int numThreads = 1024;
-    // unsigned int numBlocks = (coo->cooSize + numThreads - 1) / numThreads;
-    // int *done = (int *)malloc(sizeof(int));
-    // done[0] = 0;
-
-    // while (!done[0])
-    // {
-
-    //     done[0] = 1;
-    //     cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
-    //     cudaDeviceSynchronize();
-    //     truss_kernel<<<numThreads, numBlocks>>>(coo_d, csr_d, k, done_d);
-    //     cudaDeviceSynchronize();
-    //     cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
-    //     cudaDeviceSynchronize();
-
-
-    // }
-    // printf("done");
-
-    // copyGraph(coo_d, coo, csr_d, csr, cudaMemcpyDeviceToHost);
-
-    // cudaFree(coo_d);
-    // cudaFree(csr_d);
-    // cudaFree(done_d);
 }
 
 Graph * mult_cpu(Graph * g, int k) {
@@ -107,37 +21,78 @@ Graph * mult_cpu(Graph * g, int k) {
     for (unsigned int i = 0 ; i < g->rowPtrSize; ++i) {
         for (unsigned int j = 0 ; j < g->rowPtrSize; ++j) {
             int sum = 0;
-            for (unsigned int m1 = g->rowPtr[i]; m1 < g->rowPtr[i+1]; ++m1) {
-                for (unsigned int m2 = g->rowPtr[j]; m2 < g->rowPtr[j+1]; ++m2) {
-                    sum+= g->values[m1]*g->values[m2];
+            unsigned int m1 = g->rowPtr[i];
+            unsigned int m2 = g->rowPtr[j];
+            while (m1 < g->rowPtr[i+1] && m2 < g->rowPtr[j+1]) {
+                if (g->col[m1] > g->col[m2]) {
+                    ++m2;
+                } else if (g->col[m2] > g->col[m1]) {
+                    ++m1;
+                } else {
+                    ++sum; ++m1; ++m2;
                 }
             }
-            addEdge(s, i, j, sum, index++);
+            if (sum != 0) {
+                addEdge(s, i, j, sum, index++);
+            }
         }
     }
     done(s, index);
     return s;
 }
 
-void truss_cpu(Graph * g, int k) {
-    int changed = false;
-    while(!changed) {
-        changed = true;
-        Graph * S = mult_cpu(g, k);
-        for (int i = 0; i < S->nnzSize; ++i) {
-            if (S->values[i] < k-2) {
-                changed = false;
-                g->values[i] = 0;
-            }
-            S->values[i] *= g->values[i];
-        }
+Graph * elementWise_mult_cpu(Graph * g1, Graph * g2) {
+    Graph * s = (Graph*) malloc(sizeof(Graph));
+    s->nnzSize = 0;
+    unsigned int sIndex = 0;
+    unsigned int index1 = 0;
+    unsigned int index2 = 0;
 
-    }
-    for (int i = 0 ; i < g->nnzSize; ++i) {
-        if (g->values[i] >= k-2) {
-            printf("%d - %d - %d\n", g->row[i], g->col[i], g->values[i]);
+    while (index1 < g1->nnzSize && index2 < g2->nnzSize) {
+        if (g1->row[index1] < g2->row[index2]) {
+            ++index1;
+        } else if (g1->row[index1] > g2->row[index2]) {
+            ++index2;
+        } else {
+            if (g1->col[index1] < g2->col[index2]) {
+                ++index1;
+            } else if (g1->col[index1] > g2->col[index2]) {
+                ++index2;
+            } else {
+                addEdge(s, g1->row[index1], g1->col[index1], g1->values[index1]*g2->values[index2], sIndex++);
+                ++index1; ++index2;
+            }
         }
     }
+    done(s, sIndex);
+    return s;
+}
+
+Graph * truss_cpu(Graph * g, int k) {
+    int changed = true;
+    while(changed) {
+        changed = false;
+        Graph * s = mult_cpu(g, k);
+        
+        s = elementWise_mult_cpu(s, g);
+        
+        
+        Graph * m = (Graph *) malloc(sizeof(Graph));
+        m->nnzSize = 0;
+        int mIndex = 0;
+        for (unsigned int i = 0 ; i < s->nnzSize; ++i) {
+            if (s->values[i] >= k-2) {
+                addEdge(m, s->row[i], s->col[i], 1, mIndex++);
+            } else {
+                changed = true;
+            }
+        }
+        done(m, mIndex);
+        
+        g = elementWise_mult_cpu(g, m);
+        
+    }
+    return g;
 
 }
 
@@ -176,6 +131,26 @@ void createCSRFromCOO(Graph * g, int numRows)
     unsigned int *colIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
     unsigned int *rowIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
     int *values = (int *)malloc(g->nnzSize * sizeof(int));
+
+    //sort by col
+    for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
+        for (unsigned int j = 0 ; j < g->nnzSize - i - 1; ++j) {
+            if (g->col[j] > g->col[j+1]) {
+                int rowTemp = g->row[j];
+                int colTemp = g->col[j];
+                int valTemp = g->values[j];
+
+                g->row[j] = g->row[j+1];
+                g->col[j] = g->col[j+1];
+                g->values[j] = g->values[j+1];
+                
+                g->row[j+1] = rowTemp;
+                g->col[j+1] = colTemp;
+                g->values[j+1] = valTemp;
+            }
+        }
+    }
+    
 
     // Histogram
     for (unsigned int i = 0; i <g->nnzSize; ++i)
@@ -218,6 +193,12 @@ void createCSRFromCOO(Graph * g, int numRows)
     g->values = values;
 }
 
+
+
+
+
+//-------------------------Graph Stuff----------------------------------------------------------------------------------------------------------------
+
 unsigned int *DFSUtil(Graph * g, int v, int visited[], int *size)
 {
 
@@ -229,7 +210,7 @@ unsigned int *DFSUtil(Graph * g, int v, int visited[], int *size)
     visiting[i++] = v;
     for (int j = g->rowPtr[v]; j < g->rowPtr[v + 1]; ++j)
     {
-        if (g->col[j] != UINT_MAX && !visited[g->col[j]] )
+        if (!visited[g->col[j]] )
         {
             int size2 = BASE_SIZE;
             unsigned int *temp = DFSUtil(g, g->col[j], visited, &size2);

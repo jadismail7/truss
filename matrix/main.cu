@@ -16,9 +16,16 @@ int main(int argc, char **argv)
 
 	int numRows = initGraph(g, graphName);
 	createCSRFromCOO(g, numRows);
-
-	truss_cpu(g, k);
-
+	int size = 0;
+	g = truss_cpu(g, k);
+	for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
+		// printf("%d-%d: %d\n", g->row[i], g->col[i], g->values[i]);
+		if (size < g->row[i]) {
+			size = g->row[i];
+		}
+	}
+	createCSRFromCOO(g, size);
+	printTrussComponents(g, k);
 	return 0;
 }
 
@@ -37,6 +44,7 @@ int initGraph(Graph * g, char * filename)
         {
 			fscanf(myfile, "%d %d", &v1, &v2);
 			addEdge(g, v1, v2, 1, index++);
+			addEdge(g, v2, v1, 1, index++);
             int localMax = v1>v2?v1:v2;
             numRows = numRows>localMax?numRows:localMax;
         }
