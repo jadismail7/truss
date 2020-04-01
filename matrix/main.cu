@@ -6,9 +6,9 @@
 int main(int argc, char **argv)
 {
 	std::string directory = "./graphs/";
-	std::string filename = argc>2?argv[1]:"graph.txt";
+	std::string filename = argc>1?argv[1]:"graph.txt";
 	std::string name = directory + filename;
-	int k = argc>3?atoi(argv[2]):3;
+	int k = argc>2?atoi(argv[2]):3;
 	Graph * g = (Graph *) malloc(sizeof(Graph));
 	g->nnzSize = 0;
 	char * graphName = new char[name.size() + 1];
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	int size = 0;
 	g = truss_cpu(g, k);
 	for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
-		// printf("%d-%d: %d\n", g->row[i], g->col[i], g->values[i]);
+		printf("%d-%d: %d\n", g->row[i], g->col[i], g->values[i]);
 		if (size < g->row[i]) {
 			size = g->row[i];
 		}
