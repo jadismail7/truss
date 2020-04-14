@@ -28,7 +28,7 @@ void truss_gpu(Graph * g, int k);
 
 Graph *  truss_cpu(Graph * g, int k);
 
-
+void sortGraphByCol(Graph * g);
 
 unsigned int *DFSUtil(Graph * g, int v, int visited[], int *size);
 

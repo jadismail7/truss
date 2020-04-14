@@ -1,7 +1,8 @@
 
 #include "graph.h"
+#include "../timer.h"
 #include <string>
-__global__ void truss_kernel(Graph * g, int k, int *done)
+__global__ void truss_kernel(Graph g, int k, int *done)
 {
    
 }
@@ -11,7 +12,50 @@ void copyGraph(Graph * source, Graph * destination, cudaMemcpyKind direction) {
 }
 void truss_gpu(Graph * g, int k)
 {
+    Graph graph_d;
+    cudaMalloc((void**)&graph_d.row, g->nnzSize*sizeof(int));
+    cudaMalloc((void**)&graph_d.col, g->nnzSize*sizeof(int));
+    cudaMalloc((void**)&graph_d.rowPtr, g->rowPtrSize*sizeof(int));
+    
+    cudaMemcpy(graph_d.row, g->row, g->nnzSize*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(graph_d.col, g->col, g->nnzSize*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(graph_d.rowPtr, g->rowPtr, g->rowPtrSize*sizeof(int), cudaMemcpyHostToDevice);
+    
+    int *done_d;
+    graph_d.nnzSize = g->nnzSize;
+    graph_d.rowPtrSize = g->rowPtrSize;
 
+    cudaMalloc((void **)&done_d, sizeof(int));
+
+
+    cudaDeviceSynchronize();
+    unsigned int numThreads = 1024;
+    unsigned int numBlocks = (g->nnzSize + numThreads - 1) / numThreads;
+    int *done = (int *)malloc(sizeof(int));
+    *done = 0;
+
+    Timer timer;
+    startTime(&timer);
+    while (!*done)
+    {
+        *done = 1;
+        cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
+        truss_kernel<<<numThreads, numBlocks>>>(graph_d, k, done_d);
+        cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+    }
+    stopTime(&timer);
+    printElapsedTime(timer, "Kernel");
+
+    cudaMemcpy(g->row, graph_d.row, g->nnzSize*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(g->col, graph_d.col, g->nnzSize*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(g->rowPtr, graph_d.rowPtr, g->rowPtrSize*sizeof(int), cudaMemcpyDeviceToHost);
+    
+    cudaFree(graph_d.row);
+    cudaFree(graph_d.col);
+    cudaFree(graph_d.rowPtr);
+    cudaFree(&graph_d);
+    cudaFree(done_d);
 }
 
 Graph * mult_cpu(Graph * g, int k) {
@@ -41,7 +85,7 @@ Graph * mult_cpu(Graph * g, int k) {
     return s;
 }
 
-Graph * elementWise_mult_cpu(Graph * g1, Graph * g2) {
+Graph * elementWise_mult_cpu(Graph * g1, Graph * g2, int * rowPtrSize) {
     Graph * s = (Graph*) malloc(sizeof(Graph));
     s->nnzSize = 0;
     unsigned int sIndex = 0;
@@ -59,6 +103,9 @@ Graph * elementWise_mult_cpu(Graph * g1, Graph * g2) {
             } else if (g1->col[index1] > g2->col[index2]) {
                 ++index2;
             } else {
+                if (rowPtrSize != NULL) 
+                    *rowPtrSize = g1->row[index1];
+                    
                 addEdge(s, g1->row[index1], g1->col[index1], g1->values[index1]*g2->values[index2], sIndex++);
                 ++index1; ++index2;
             }
@@ -74,7 +121,7 @@ Graph * truss_cpu(Graph * g, int k) {
         changed = false;
         Graph * s = mult_cpu(g, k);
         
-        s = elementWise_mult_cpu(s, g);
+        s = elementWise_mult_cpu(s, g, NULL);
         
         
         Graph * m = (Graph *) malloc(sizeof(Graph));
@@ -88,8 +135,9 @@ Graph * truss_cpu(Graph * g, int k) {
             }
         }
         done(m, mIndex);
-        
-        g = elementWise_mult_cpu(g, m);
+        int rowPtrSize;
+        g = elementWise_mult_cpu(g, m, &rowPtrSize);
+        createCSRFromCOO(g, rowPtrSize);
         
     }
     return g;
@@ -124,14 +172,7 @@ void done(Graph * g, int size) {
     g->nnzSize = size;
 }
 
-void createCSRFromCOO(Graph * g, int numRows)
-{
-    // Allocate
-    unsigned int *rowPtrs = (unsigned int *)calloc(numRows + 1, sizeof(unsigned int));
-    unsigned int *colIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
-    unsigned int *rowIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
-    int *values = (int *)malloc(g->nnzSize * sizeof(int));
-
+void sortGraphByCol(Graph * g) {
     //sort by col
     for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
         for (unsigned int j = 0 ; j < g->nnzSize - i - 1; ++j) {
@@ -150,6 +191,15 @@ void createCSRFromCOO(Graph * g, int numRows)
             }
         }
     }
+}
+
+void createCSRFromCOO(Graph * g, int numRows)
+{
+    // Allocate
+    unsigned int *rowPtrs = (unsigned int *)calloc(numRows + 1, sizeof(unsigned int));
+    unsigned int *colIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
+    unsigned int *rowIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
+    int *values = (int *)malloc(g->nnzSize * sizeof(int));
     
 
     // Histogram

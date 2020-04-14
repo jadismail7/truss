@@ -1,71 +1,93 @@
 
 #include "graph.h"
+#include "../timer.h"
 #include <string>
-__global__ void truss_kernel(Graph * g, int k, int *done)
+__global__ void truss_kernel(Graph g, int k, int *done)
 {
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < g->nnzSize) {
-        int v1 = g->row[index];
-        int v2 = g->col[index];
-        if (g->col[index] != UINT_MAX) {
+    if (index < g.nnzSize) {
+        unsigned int v1 = g.row[index];
+        unsigned int v2 = g.col[index];
+        if (v2 != UINT_MAX) {
             unsigned int commonNeighbors = 0;
-            for (unsigned int i = g->rowPtr[v1]; i < g->rowPtr[v1 + 1]; ++i)
-            {
-                for (unsigned int j = g->rowPtr[v2]; j < j < g->rowPtr[v2 + 1]; ++j)
-                {
-                    unsigned int neighbor1 = g->col[i];
-                    unsigned int neighbor2 = g->col[j];
-                    if (neighbor1 == neighbor2 && g->col[i] != UINT_MAX && g->col[j] != UINT_MAX)
-                    {
-                        ++commonNeighbors;
-                    }
-                    if (commonNeighbors >= k-2) {
-                        break;
-                    }
+            int index1 = g.rowPtr[v1];
+            int index2 = g.rowPtr[v2];
+
+            while (index1 < g.rowPtr[v1+1] && index2 < g.rowPtr[v2+1]) {
+                if (g.col[index1] == UINT_MAX) {
+                    ++index1;
+                    continue;
+                } else if (g.col[index2] == UINT_MAX) {
+                    ++index2;
+                    continue;
+                }
+                if (g.col[index1] < g.col[index2]) {
+                    ++index1;
+                } else if (g.col[index1] > g.col[index2]) {
+                    ++index2; 
+                } else {
+                    ++commonNeighbors; ++index1; ++index2;
+                }
+                if (commonNeighbors == k-2) {
+                    break;
                 }
             }
-            if (commonNeighbors <= k)
+            if (commonNeighbors < k-2)
             {
-                g->col[index] = UINT_MAX;
-                done[0] = 0;
+                g.col[index] = UINT_MAX;
+                *done = 0;
             }
         }
     }
 
 }
 
-void copyGraph(Graph * source, Graph * destination, cudaMemcpyKind direction) {
-    
-}
 void truss_gpu(Graph * g, int k)
 {
-    // Graph * graph_d
-    // int *done_d;
-
-    // cudaMalloc((void **)&graph_d, sizeof(Graph));
-    // cudaMalloc((void **)&done_d, sizeof(int));
-
-    // cudaDeviceSynchronize();
-    // unsigned int numThreads = 1024;
-    // unsigned int numBlocks = (graph->nnzSize + numThreads - 1) / numThreads;
-    // int *done = (int *)malloc(sizeof(int));
-    // done[0] = 0;
-
-    // while (!done[0])
-    // {
-    //     done[0] = 1;
-    //     cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
-    //     cudaDeviceSynchronize();
-    //     truss_kernel<<<numThreads, numBlocks>>>(graph_d, k, done_d);
-    //     cudaDeviceSynchronize();
-    //     cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
-    //     cudaDeviceSynchronize();
-    // }
-
+    Graph graph_d;
+    cudaMalloc((void**)&graph_d.row, g->nnzSize*sizeof(int));
+    cudaMalloc((void**)&graph_d.col, g->nnzSize*sizeof(int));
+    cudaMalloc((void**)&graph_d.rowPtr, g->rowPtrSize*sizeof(int));
     
+    cudaMemcpy(graph_d.row, g->row, g->nnzSize*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(graph_d.col, g->col, g->nnzSize*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(graph_d.rowPtr, g->rowPtr, g->rowPtrSize*sizeof(int), cudaMemcpyHostToDevice);
+    
+    int *done_d;
+    graph_d.nnzSize = g->nnzSize;
+    graph_d.rowPtrSize = g->rowPtrSize;
 
-    // cudaFree(graph_d);
-    // cudaFree(done_d);
+    cudaMalloc((void **)&done_d, sizeof(int));
+
+
+    cudaDeviceSynchronize();
+    unsigned int numThreads = 1024;
+    unsigned int numBlocks = (g->nnzSize + numThreads - 1) / numThreads;
+    int *done = (int *)malloc(sizeof(int));
+    *done = 0;
+
+    Timer timer;
+    startTime(&timer);
+    while (!*done)
+    {
+        *done = 1;
+        cudaMemcpy(done_d, done, sizeof(int), cudaMemcpyHostToDevice);
+        truss_kernel<<<numThreads, numBlocks>>>(graph_d, k, done_d);
+        cudaMemcpy(done, done_d, sizeof(int), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+    }
+    stopTime(&timer);
+    printElapsedTime(timer, "Kernel");
+
+    cudaMemcpy(g->row, graph_d.row, g->nnzSize*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(g->col, graph_d.col, g->nnzSize*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(g->rowPtr, graph_d.rowPtr, g->rowPtrSize*sizeof(int), cudaMemcpyDeviceToHost);
+    
+    cudaFree(graph_d.row);
+    cudaFree(graph_d.col);
+    cudaFree(graph_d.rowPtr);
+    cudaFree(&graph_d);
+    cudaFree(done_d);
 }
 
 void truss_cpu(Graph * g, int k) {
@@ -79,13 +101,26 @@ void truss_cpu(Graph * g, int k) {
                 continue;
             }
             unsigned int commonNeighbors = 0;
-            for (unsigned int v1NeighborIndex = g->rowPtr[v1]; v1NeighborIndex < g->rowPtr[v1+1]; ++v1NeighborIndex) {
-                for (unsigned int v2NeighborIndex = g->rowPtr[v2]; v2NeighborIndex < g->rowPtr[v2+1]; ++v2NeighborIndex) {
-                    unsigned int v1Neighbor = g->col[v1NeighborIndex];
-                    unsigned int v2Neighbor = g->col[v2NeighborIndex];
-                    if (v1Neighbor == v2Neighbor && g->col[v1NeighborIndex] != UINT_MAX && g->col[v2NeighborIndex] != UINT_MAX ) {
-                        commonNeighbors++;
-                    }
+            int index1 = g->rowPtr[v1];
+            int index2 = g->rowPtr[v2];
+
+            while (index1 < g->rowPtr[v1+1] && index2 < g->rowPtr[v2+1]) {
+                if (g->col[index1] == UINT_MAX) {
+                    ++index1;
+                    continue;
+                } else if (g->col[index2] == UINT_MAX) {
+                    ++index2;
+                    continue;
+                }
+                if (g->col[index1] < g->col[index2]) {
+                    ++index1;
+                } else if (g->col[index1] > g->col[index2]) {
+                    ++index2; 
+                } else {
+                    ++commonNeighbors; ++index1; ++index2;
+                }
+                if (commonNeighbors == k-2) {
+                    break;
                 }
             }
             if (commonNeighbors < (k-2)) {
@@ -128,6 +163,24 @@ void createCSRFromCOO(Graph * g, int numRows)
     unsigned int *colIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
     unsigned int *rowIdxs = (unsigned int *)malloc(g->nnzSize * sizeof(unsigned int));
 
+    //sort by col
+    for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
+        for (unsigned int j = 0 ; j < g->nnzSize - i - 1; ++j) {
+            if (g->col[j] > g->col[j+1]) {
+                int rowTemp = g->row[j];
+                int colTemp = g->col[j];
+
+                g->row[j] = g->row[j+1];
+                g->col[j] = g->col[j+1];
+                
+                g->row[j+1] = rowTemp;
+                g->col[j+1] = colTemp;
+                
+            }
+        }
+    }
+
+
     // Histogram
     for (unsigned int i = 0; i <g->nnzSize; ++i)
     {
@@ -135,15 +188,15 @@ void createCSRFromCOO(Graph * g, int numRows)
         rowPtrs[row]++;
     }
 
-    // Prefix sum
-    unsigned int sum = 0;
+    // Prefix sum row
+    unsigned int sumRow = 0;
     for (unsigned int row = 0; row < numRows; ++row)
     {
         unsigned int val = rowPtrs[row];
-        rowPtrs[row] = sum;
-        sum += val;
+        rowPtrs[row] = sumRow;
+        sumRow += val;
     }
-    rowPtrs[numRows] = sum;
+    rowPtrs[numRows] = sumRow;
 
     // Binning
     for (unsigned int index = 0; index < g->nnzSize; ++index)
@@ -233,7 +286,7 @@ void printTrussComponents(Graph * g, int k)
 
     for (int i = 0; i < size; ++i)
     {
-        if (componentSizes[i] >= k)
+        if (componentSizes[i] > 1)
         {
             printf("[");
             for (int j = 0; j < componentSizes[i]; ++j)

@@ -1,5 +1,6 @@
 
 #include "graph.h"
+#include "../timer.h"
 #include <string>
 #include <cstring>
 
@@ -15,6 +16,7 @@ int main(int argc, char **argv)
 	strcpy(graphName, name.c_str());
 
 	int numRows = initGraph(g, graphName);
+	sortGraphByCol(g);
 	createCSRFromCOO(g, numRows);
 	int size = 0;
 	g = truss_cpu(g, k);
@@ -24,7 +26,6 @@ int main(int argc, char **argv)
 			size = g->row[i];
 		}
 	}
-	createCSRFromCOO(g, size);
 	printTrussComponents(g, k);
 	return 0;
 }
