@@ -1,8 +1,8 @@
 
 #include "graph.h"
-#include "../timer.h"
 #include <string>
 #include <cstring>
+#include "../timer.h"
 
 int main(int argc, char **argv)
 {
@@ -11,29 +11,43 @@ int main(int argc, char **argv)
 	std::string name = directory + filename;
 	int k = argc>2?atoi(argv[2]):3;
 	Graph * g = (Graph *) malloc(sizeof(Graph));
+	Graph * g_d = (Graph *) malloc(sizeof(Graph));
 	g->nnzSize = 0;
+	g_d->nnzSize = 0;
+	
 	char * graphName = new char[name.size() + 1];
 	strcpy(graphName, name.c_str());
-
+	
 	int numRows = initGraph(g, graphName);
-	sortGraphByCol(g);
+	initGraph(g_d, graphName);
+
 	createCSRFromCOO(g, numRows);
-	int size = 0;
-	g = truss_cpu(g, k);
-	for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
-		printf("%d-%d: %d\n", g->row[i], g->col[i], g->values[i]);
-		if (size < g->row[i]) {
-			size = g->row[i];
-		}
-	}
+	createCSRFromCOO(g_d, numRows);
+
+	
+	Timer timer;
+	startTime(&timer);
+	truss_cpu(g, k);
+	stopTime(&timer);
+	printElapsedTime(timer, "CPU Truss");
+
+	startTime(&timer);
+	truss_gpu(g_d, k);
+	stopTime(&timer);
+	printElapsedTime(timer, "GPU Truss");
+
+	printf("CPU Result:\n");
 	printTrussComponents(g, k);
+	printf("GPU Result:\n");
+	printTrussComponents(g_d, k);
+
 	return 0;
 }
 
 
 int initGraph(Graph * g, char * filename)
 {
-    int v1, v2;
+    int v1, v2, w;
     // double w;
     int numRows = 0;
 
@@ -43,7 +57,7 @@ int initGraph(Graph * g, char * filename)
     {
         while (!feof(myfile))
         {
-			fscanf(myfile, "%d %d", &v1, &v2);
+			fscanf(myfile, "%d %d %d", &v1, &v2, &w);
 			addEdge(g, v1, v2, 1, index++);
 			addEdge(g, v2, v1, 1, index++);
             int localMax = v1>v2?v1:v2;
@@ -52,5 +66,9 @@ int initGraph(Graph * g, char * filename)
         fclose(myfile);
 	}
 	done(g, index);
+	g->affected = (unsigned int *) malloc(g->nnzSize * sizeof(int));
+	for (unsigned int i = 0 ; i < g->nnzSize; ++i) {
+		g->affected[i] = 0;
+	}
     return numRows;
 }

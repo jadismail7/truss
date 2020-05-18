@@ -9,7 +9,6 @@ typedef struct graph
     unsigned int *row;
     unsigned int *col;
     unsigned int *rowPtr;
-    int * values;
     unsigned int rowPtrSize;
 } Graph;
 
@@ -24,14 +23,12 @@ void addEdge(Graph * g, int v1, int v2, double weight, int index);
 
 void createCSRFromCOO(Graph * g, int numRows);
 
-void truss_gpu(Graph * g, int k);
-
-Graph *  truss_cpu(Graph * g, int k);
-
-void sortGraphByCol(Graph * g);
-
 unsigned int *DFSUtil(Graph * g, int v, int visited[], int *size);
 
 unsigned int **connectedComponents(Graph * g, int *returnSize, int *componentSizes);
 
 void printTrussComponents(Graph * g, int k);
+
+void truss_gpu(Graph * g, int k);
+
+void truss_cpu(Graph * g, int k);
